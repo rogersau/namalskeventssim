@@ -49,8 +49,6 @@ Detailed differences
 - Edge cases where differences matter
 	- If weights include very small fractions (<0.01) or very large differences, the Enfusion quantization and repeated-array cost can introduce noticeable differences.
 	- For small lists and typical weights the difference is negligible.
-- Recommendation
-	- Use the summed-weight method for cleaner handling of fractional weights and lower allocation overhead. The bucketed method is simple and understandable and is perfectly acceptable where memory and CPU aren't constrained.
 
 Enfusion-style example (provided):
 
