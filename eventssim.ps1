@@ -12,6 +12,9 @@ param(
     ,
     [Parameter(Position=2, HelpMessage = 'Optional CSV output path (per-day breakdown). If not rooted, treated relative to the script folder)')]
     [string]$csvPath = ''
+    ,
+    [Parameter(Position=5, HelpMessage = 'When set print analytic expectations only (fast)')]
+    [switch]$analyticOnly = $false
 )
 
 # Basic validation
@@ -44,8 +47,8 @@ try {
 $windowSeconds = [math]::Floor((24 * 60 * 60) / $restartsPerDay)
 
 # Event timing bounds (seconds)
-$eventMin = 1200 # 20 minutes
-$eventMax = 1800 # 30 minutes
+$eventMin = 1800 # 20 minutes
+$eventMax = 2100 # 30 minutes
 
 # Output CSV removed; this run will only print stats
 
@@ -57,10 +60,30 @@ if (-Not (Test-Path $eventsFile)) {
 }
 
 try {
-    $events = Get-Content -Path $eventsFile -Raw | ConvertFrom-Json
+    $eventsJson = Get-Content -Path $eventsFile -Raw | ConvertFrom-Json
 } catch {
     Write-Error "Failed to read or parse events file: $eventsFile - $($_.Exception.Message)"
     exit 3
+}
+
+# Support two possible JSON formats:
+# 1) An array of event objects: [ { Name, Chance }, ... ]
+# 2) An object with metadata and an Events array: { EventMin: <sec>, EventMax: <sec>, Events: [ { Name, Chance }, ... ] }
+if ($eventsJson -is [System.Array]) {
+    $events = $eventsJson
+} elseif ($eventsJson.Events -ne $null) {
+    $events = $eventsJson.Events
+    # override event timing if provided in the JSON (values are seconds)
+    if ($eventsJson.EventMin -ne $null) { $eventMin = [int]$eventsJson.EventMin }
+    if ($eventsJson.EventMax -ne $null) { $eventMax = [int]$eventsJson.EventMax }
+} else {
+    # Single event object (not likely) - wrap in array if it looks like an event
+    if ($eventsJson.Name -ne $null -and $eventsJson.Chance -ne $null) {
+        $events = @($eventsJson)
+    } else {
+        Write-Error "Unsupported events.json structure. Expected array or object with 'Events' array."
+        exit 3
+    }
 }
 
 # Ensure events is an array of objects with Name and Chance
@@ -68,6 +91,73 @@ if (-not $events -or $events.Count -eq 0) {
     Write-Error "No events found in $eventsFile"
     exit 4
 }
+
+# --- Analytic expectation calculation (DayZ-style bucketed selection) ---
+# Uses same windowSeconds/eventMin/eventMax as the simulation so numbers match script behavior.
+$meanDelay = ($eventMin + $eventMax) / 2.0
+$eventsPerWindow = if ($meanDelay -gt 0) { $windowSeconds / $meanDelay } else { 0 }
+$eventsPerDay = $eventsPerWindow * $restartsPerDay
+
+# Build bucket counts (ceil(Chance * 100)) to mirror DayZ expansion
+$analyticBuckets = $events | ForEach-Object {
+    [PSCustomObject]@{
+        Name = $_.Name
+        Chance = [double]$_.Chance
+        Bucket = [int][math]::Ceiling([double]$_.Chance * 100)
+    }
+}
+
+$sumBuckets = ($analyticBuckets | Measure-Object -Property Bucket -Sum).Sum
+if ($sumBuckets -eq 0) {
+    # Fallback: if all buckets zero, try fractional Chance proportions, otherwise uniform
+    $sumChance = ($analyticBuckets | Measure-Object -Property Chance -Sum).Sum
+    if ($sumChance -gt 0) {
+        $analyticRows = $analyticBuckets | ForEach-Object {
+            $p = $_.Chance / $sumChance
+            [PSCustomObject]@{
+                Event = $_.Name
+                Bucket = $_.Bucket
+                Prob = [math]::Round($p, 6)
+                PerWindow = [math]::Round($eventsPerWindow * $p, 3)
+                PerDay = [math]::Round($eventsPerDay * $p, 3)
+            }
+        }
+    } else {
+        $count = $analyticBuckets.Count
+        $p = if ($count -gt 0) { 1.0 / $count } else { 0 }
+        $analyticRows = $analyticBuckets | ForEach-Object {
+            [PSCustomObject]@{
+                Event = $_.Name
+                Bucket = $_.Bucket
+                Prob = [math]::Round($p, 6)
+                PerWindow = [math]::Round($eventsPerWindow * $p, 3)
+                PerDay = [math]::Round($eventsPerDay * $p, 3)
+            }
+        }
+    }
+} else {
+    $analyticRows = $analyticBuckets | ForEach-Object {
+        $p = $_.Bucket / $sumBuckets
+        [PSCustomObject]@{
+            Event = $_.Name
+            Bucket = $_.Bucket
+            Prob = [math]::Round($p, 6)
+            PerWindow = [math]::Round($eventsPerWindow * $p, 3)
+            PerDay = [math]::Round($eventsPerDay * $p, 3)
+        }
+    }
+}
+
+# Print analytic expectations
+Write-Output "Analytic expectations (DayZ-style selection, ceil(Chance*100) buckets):"
+Write-Output ("WindowSeconds: {0}, MeanDelay: {1}, Events/Window: {2}, Events/Day: {3}" -f $windowSeconds, $meanDelay, [math]::Round($eventsPerWindow,3), [math]::Round($eventsPerDay,3))
+$analyticRows | Sort-Object Event | Format-Table @{Label='Event';Expression={$_.Event}}, @{Label='Bucket';Expression={$_.Bucket}}, @{Label='Prob';Expression={$_.Prob}}, @{Label='PerWindow';Expression={$_.PerWindow}}, @{Label='PerDay';Expression={$_.PerDay}} -AutoSize
+
+if ($analyticOnly) {
+    exit 0
+}
+
+# --- end analytic block ---
 
 # Stats trackers
 $eventCounts = @{}
@@ -88,7 +178,7 @@ function Get-RandomEventName($events, [bool]$useDayZ = $true) {
         # then pick a random element from the expanded list.
         $possible = New-Object System.Collections.ArrayList
         foreach ($e in $events) {
-            $repeat = [int]($e.Chance * 100)
+        $repeat = [math]::Ceiling($e.Chance * 100)
             for ($i = 0; $i -lt $repeat; $i++) { [void]$possible.Add($e.Name) }
         }
 
