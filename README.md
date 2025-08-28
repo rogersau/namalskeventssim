@@ -4,6 +4,7 @@ A compact PowerShell simulator that models weighted event selection across repea
 
 Where to find
 - The script lives in the repository root as `./eventssim.ps1`. Run the command from the repo root (no absolute paths required).
+- Events are now read from `events.json` in the repository root. Edit that file to change event names or Chance weights instead of editing the script.
 
 Quick run
 Open PowerShell in the repository root and run:
@@ -12,10 +13,20 @@ Open PowerShell in the repository root and run:
 pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\eventssim.ps1
 ```
 
+Command-line parameters
+You can provide the number of days to simulate and the restarts-per-day at runtime. Examples:
+
+```powershell
+# use positional parameters: days then restartsPerDay
+pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\eventssim.ps1 120 4
+
+# use named parameters
+pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\eventssim.ps1 -days 120 -restartsPerDay 4
+```
+
 How the day is modeled
-- `windowSeconds` — seconds in one restart window (default 21600 = 6 hours)
 - `restartsPerDay` — number of restart windows per day (default 4)
-- Effective simulated day = `windowSeconds * restartsPerDay` (defaults to 24 hours)
+- `windowSeconds` — seconds in one restart window is computed from `restartsPerDay` so the effective simulated day is always 24 hours (windowSeconds = floor(24*60*60 / restartsPerDay)).
 
 Key configuration (top of `eventssim.ps1`)
 - `$days` — number of simulated days (default 120)

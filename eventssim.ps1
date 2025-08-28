@@ -1,9 +1,27 @@
 # Simulation configuration
-$days = 120
-$restartsPerDay = 4
+# Accept days and restartsPerDay as runtime parameters so the script can be run without editing.
+param(
+    [Parameter(Position=0, HelpMessage = 'Number of simulated days')]
+    [int]$days = 120,
+
+    [Parameter(Position=1, HelpMessage = 'Restart windows per day')]
+    [int]$restartsPerDay = 4
+)
+
+# Basic validation
+if ($days -lt 1) {
+    Write-Error "Invalid value for days: $days. Must be >= 1."
+    exit 2
+}
+if ($restartsPerDay -lt 1) {
+    Write-Error "Invalid value for restartsPerDay: $restartsPerDay. Must be >= 1."
+    exit 2
+}
 
 # Time window per restart (seconds)
-$windowSeconds = 21600 # 6 hours
+# Compute window seconds from restartsPerDay so the effective simulated day is 24 hours.
+# windowSeconds = (24 hours in seconds) / restartsPerDay
+$windowSeconds = [math]::Floor((24 * 60 * 60) / $restartsPerDay)
 
 # Event timing bounds (seconds)
 $eventMin = 1200 # 20 minutes
@@ -11,15 +29,25 @@ $eventMax = 1800 # 30 minutes
 
 # Output CSV removed; this run will only print stats
 
-# Standard events and their relative weights (chance)
-$events = @(
-    @{ Name = "Aurora";      Chance = 0.85 },
-    @{ Name = "Blizzard";    Chance = 0.10 },
-    @{ Name = "ExtremeCold"; Chance = 0.20 },
-    @{ Name = "SnowfallE";   Chance = 0.40 },
-    @{ Name = "EVRStorm";    Chance = 0.30 },
-    @{ Name = "HeavyFog";    Chance = 0.10 }
-)
+# Load events from external JSON file so the script doesn't need editing to change events
+$eventsFile = Join-Path -Path (Split-Path -Path $MyInvocation.MyCommand.Path -Parent) -ChildPath 'events.json'
+if (-Not (Test-Path $eventsFile)) {
+    Write-Error "Events file not found: $eventsFile`nCreate an events.json in the script folder with an array of { Name, Chance } objects."
+    exit 2
+}
+
+try {
+    $events = Get-Content -Path $eventsFile -Raw | ConvertFrom-Json
+} catch {
+    Write-Error "Failed to read or parse events file: $eventsFile - $($_.Exception.Message)"
+    exit 3
+}
+
+# Ensure events is an array of objects with Name and Chance
+if (-not $events -or $events.Count -eq 0) {
+    Write-Error "No events found in $eventsFile"
+    exit 4
+}
 
 # Stats trackers
 $eventCounts = @{}
