@@ -7,10 +7,36 @@ Where to find
 - Events are now read from `events.json` in the repository root. Edit that file to change event names or Chance weights instead of editing the script.
 
 Quick run
-Open PowerShell in the repository root and run:
+Open a PowerShell prompt in the repository root and run the script. Examples below show the two common shells:
+
+- PowerShell 7+ (pwsh, cross-platform / newer Windows versions):
 
 ```powershell
 pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\eventssim.ps1
+```
+
+- Windows PowerShell 5.x (built into older Windows; use `powershell.exe`):
+
+```powershell
+powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\eventssim.ps1
+```
+
+Execution policy
+PowerShell may block script execution depending on the system execution policy. Common ways to run this script when you encounter policy restrictions:
+
+- One-off bypass (recommended for ad-hoc runs): add `-ExecutionPolicy Bypass` when launching `pwsh` or `powershell.exe` (examples above).
+- Unblock the script file permanently for the current user:
+
+```powershell
+# from an elevated or standard prompt
+Unblock-File -Path .\eventssim.ps1
+```
+
+- Change the execution policy (requires appropriate privileges and administrative consent):
+
+```powershell
+# set for current user (no admin required)
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 ```
 
 Command-line parameters
