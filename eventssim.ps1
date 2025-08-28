@@ -6,6 +6,12 @@ param(
 
     [Parameter(Position=1, HelpMessage = 'Restart windows per day')]
     [int]$restartsPerDay = 4
+    ,
+    [Parameter(Position=3, HelpMessage = 'When true use DayZ/Enfusion-style expanded-list selection (freq*100). When false use summed-weight selection.')]
+    [object]$useDayZSelection = $true
+    ,
+    [Parameter(Position=2, HelpMessage = 'Optional CSV output path (per-day breakdown). If not rooted, treated relative to the script folder)')]
+    [string]$csvPath = ''
 )
 
 # Basic validation
@@ -15,6 +21,20 @@ if ($days -lt 1) {
 }
 if ($restartsPerDay -lt 1) {
     Write-Error "Invalid value for restartsPerDay: $restartsPerDay. Must be >= 1."
+    exit 2
+}
+
+# Normalize $useDayZSelection to boolean (allow strings like 'true'/'false' or 1/0)
+try {
+    if ($useDayZSelection -is [string]) {
+        $useDayZSelection = [System.Convert]::ToBoolean($useDayZSelection)
+    } elseif ($useDayZSelection -is [int]) {
+        $useDayZSelection = [bool]$useDayZSelection
+    } else {
+        $useDayZSelection = [bool]$useDayZSelection
+    }
+} catch {
+    Write-Error "Invalid value for useDayZSelection: $useDayZSelection. Use true/false."
     exit 2
 }
 
@@ -57,17 +77,35 @@ foreach ($evt in $events) {
     $eventCountsPerDay[$evt.Name] = @()
 }
 
-function Get-RandomEventName($events) {
-    # Weighted random selection based on Chance values (safer and faster)
-    $total = ($events | Measure-Object -Property Chance -Sum).Sum
-    if ($total -le 0) { return $events[0].Name }
-    $r = Get-Random -Minimum 0 -Maximum $total
-    $acc = 0
-    foreach ($e in $events) {
-        $acc += $e.Chance
-        if ($r -lt $acc) { return $e.Name }
+# Collect per-day records for CSV export (Day, Event, Count)
+$dailyRecords = @()
+
+function Get-RandomEventName($events, [bool]$useDayZ = $true) {
+    if (-not $events -or $events.Count -eq 0) { return $null }
+
+    if ($useDayZ) {
+        # DayZ-like selection: expand each event into the list freq*100 times
+        # then pick a random element from the expanded list.
+        $possible = New-Object System.Collections.ArrayList
+        foreach ($e in $events) {
+            $repeat = [int]($e.Chance * 100)
+            for ($i = 0; $i -lt $repeat; $i++) { [void]$possible.Add($e.Name) }
+        }
+
+        if ($possible.Count -eq 0) { return $events[0].Name }
+        return $possible[(Get-Random -Minimum 0 -Maximum $possible.Count)]
+    } else {
+        # Summed-weight accumulator selection (preserves fractional weights)
+        $total = ($events | Measure-Object -Property Chance -Sum).Sum
+        if ($total -le 0) { return $events[0].Name }
+        $r = Get-Random -Minimum 0 -Maximum $total
+        $acc = 0
+        foreach ($e in $events) {
+            $acc += $e.Chance
+            if ($r -lt $acc) { return $e.Name }
+        }
+        return $events[-1].Name
     }
-    return $events[-1].Name
 }
 
 for ($day = 1; $day -le $days; $day++) {
@@ -81,7 +119,7 @@ for ($day = 1; $day -le $days; $day++) {
             $eventDelay = Get-Random -Minimum $eventMin -Maximum ($eventMax + 1)
             $currentTime += $eventDelay
             if ($currentTime -lt $windowSeconds) {
-                $eventName = Get-RandomEventName $events
+                $eventName = Get-RandomEventName $events $useDayZSelection
                 $eventCounts[$eventName]++
                 $dailyCounts[$eventName]++
             }
@@ -91,6 +129,15 @@ for ($day = 1; $day -le $days; $day++) {
     # record daily counts for statistics
     foreach ($evt in $events) {
         $eventCountsPerDay[$evt.Name] += $dailyCounts[$evt.Name]
+    }
+
+    # append per-day records (ignore restarts because dailyCounts aggregates across restarts)
+    foreach ($evt in $events) {
+        $dailyRecords += [PSCustomObject]@{
+            Day = $day
+            Event = $evt.Name
+            Count = $dailyCounts[$evt.Name]
+        }
     }
 }
 
@@ -124,3 +171,31 @@ foreach ($eventType in $eventCounts.Keys | Sort-Object) {
 
 # Print a readable table to console
 $results | Sort-Object Event | Format-Table @{Label='Event';Expression={$_.Event}}, @{Label='Avg/Day';Expression={$_.AvgPerDay}}, @{Label='Avg/Window';Expression={$_.AvgPerWindow}}, @{Label='Min/Day';Expression={$_.MinPerDay}}, @{Label='Max/Day';Expression={$_.MaxPerDay}} -AutoSize
+
+# If csvPath provided, export a wide per-day CSV (columns: Day, <EventNames...>)
+if ($csvPath -ne '') {
+    # If not rooted, treat path relative to script folder
+    if (-not [System.IO.Path]::IsPathRooted($csvPath)) {
+        $csvPath = Join-Path -Path (Split-Path -Path $MyInvocation.MyCommand.Path -Parent) -ChildPath $csvPath
+    }
+    try {
+        $wideRecords = @()
+        for ($i = 0; $i -lt $days; $i++) {
+            $row = @{ Day = ($i + 1) }
+            foreach ($evt in $events) {
+                $counts = $eventCountsPerDay[$evt.Name]
+                $countForDay = if ($counts -and $counts.Count -gt $i) { $counts[$i] } else { 0 }
+                $row[$evt.Name] = $countForDay
+            }
+            $wideRecords += New-Object PSObject -Property $row
+        }
+
+        # Preserve column order: Day then event names in the same order as in events.json
+        $properties = @('Day') + ($events | ForEach-Object { $_.Name })
+        $wideRecords | Select-Object $properties | Export-Csv -Path $csvPath -NoTypeInformation -Force
+        Write-Output "CSV written to $csvPath"
+    } catch {
+        Write-Error "Failed to write CSV: $($_.Exception.Message)"
+        exit 5
+    }
+}

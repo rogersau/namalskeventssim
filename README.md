@@ -50,6 +50,17 @@ pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\eventssim.ps1 12
 pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\eventssim.ps1 -days 120 -restartsPerDay 4
 ```
 
+Toggle selection algorithm
+You can choose which selection algorithm to use with `-useDayZSelection` (default: true).
+
+```powershell
+# use DayZ expanded-list selection (default)
+pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\eventssim.ps1 -days 120 -restartsPerDay 4 -useDayZSelection $true
+
+# use summed-weight accumulator selection (preserves fractional weights)
+pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\eventssim.ps1 -days 120 -restartsPerDay 4 -useDayZSelection $false
+```
+
 How the day is modeled
 - `restartsPerDay` — number of restart windows per day (default 4)
 - `windowSeconds` — seconds in one restart window is computed from `restartsPerDay` so the effective simulated day is always 24 hours (windowSeconds = floor(24*60*60 / restartsPerDay)).
@@ -65,7 +76,13 @@ Output
 - The script prints a console table with Avg/Day, Avg/Window, Min/Day and Max/Day per event. 
 
 Notes & customization
-- Weighted selection uses summed weights (no quantization).
+- Selection algorithm
+	- The script now uses a DayZ/Enfusion-style selection algorithm: for each selection the code expands a temporary list by repeating each event name int(Chance * 100) times, then picks a uniform random element from that expanded list. This mirrors the provided Enfusion snippet.
+	- If the expansion produces no entries (for example all Chance values are zero or so small that int(Chance*100) == 0), the function falls back to returning the first event name to avoid returning null.
+
+- Performance and tradeoffs
+	- The expanded-list approach is simple and closely matches the DayZ implementation, but it allocates and fills a temporary array on every selection. That allocation cost and extra inner-loop work can be heavier when you have many event types or very large weights.
+	- If you prefer a more efficient selection (no temporary array), a summed-weight accumulator approach is available and preserves fractional weights exactly.
 
 ## Comparison with DayZ (Enfusion) implementation
 
@@ -92,16 +109,16 @@ Enfusion-style example (provided):
 ```c
 typename GetRandomEvent()
 {
-		if (m_PossibleEventTypes.Count() == 0) return typename;
+	if (m_PossibleEventTypes.Count() == 0) return typename;
     
-		array<typename> possible_types = {};
-		foreach (typename type, float freq: m_PossibleEventTypes) {
-				for (int i = 0; i < freq * 100; i++) {
-						possible_types.Insert(type);
-				}
+	array<typename> possible_types = {};
+	foreach (typename type, float freq: m_PossibleEventTypes) {
+		for (int i = 0; i < freq * 100; i++) {
+			possible_types.Insert(type);
 		}
+	}
             
-		return possible_types.GetRandomElement();
+	return possible_types.GetRandomElement();
 }
 ```
 
