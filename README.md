@@ -10,6 +10,9 @@ Key points (short)
 
 
 Quick examples
+
+*Note: if pwsh command fails, use powershell instead*
+
 ```powershell
 # default (simulation) - used to simulate 1 week, useful to visualise what a week of weather would look like.
 pwsh -NoProfile -File .\eventssim.ps1
