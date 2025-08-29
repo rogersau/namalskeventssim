@@ -60,11 +60,13 @@ When to use which (both should produce near identical results)
 - Use summed-weight (`-useDayZSelection $false`) for faster runs or when weights require fractional precision.
 
 Analytic expectations
-- The script can print analytic expectations (events/window and events/day) using the DayZ ceil-bucket probabilities with `-analyticOnly`. This is fast and matches the simulator's bucketed probabilities.
+- The script can print analytic expectations (events/window and events/day) with `-analyticOnly`.
+- The analytic calculation uses the DayZ ceil-bucket logic to form base probabilities, but it also accounts for the rule that the same event cannot occur immediately twice: the script computes the stationary distribution of the "no self-transition" Markov chain and uses that for expected counts. This can differ from the simple bucket ratios shown elsewhere.
 
 Notes
 - Display is sorted by event name for readability; internal candidate expansion follows the order in `events.json` (unless you sort it in the file).
 - The script includes a safeguard to parse boolean-like arguments and supports both JSON formats described above.
+ - The simulation prevents the same event running back-to-back: when a selection equals the previous event the script re-draws to avoid immediate repeats.
 
 License
 - Use as you like. No warranty.

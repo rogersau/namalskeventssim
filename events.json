@@ -1,12 +1,12 @@
 {
-  "EventMin": 1500,
-  "EventMax": 2400,
+  "EventMin": 550,
+  "EventMax": 1000,
   "Events": [
-    { "Name": "Aurora", "Chance": 0.4 },
-    { "Name": "Blizzard", "Chance": 0.1 },
-    { "Name": "ExtremeCold", "Chance": 0.15 },
-    { "Name": "SnowfallE", "Chance": 0.25 },
-    { "Name": "EVRStorm", "Chance": 0.2 },
-    { "Name": "HeavyFog", "Chance": 0.1 }
+    { "Name": "Aurora", "Chance": 0.85 },
+    { "Name": "Blizzard", "Chance": 0.4 },
+    { "Name": "ExtremeCold", "Chance": 0.40 },
+    { "Name": "SnowfallE", "Chance": 0.60 },
+    { "Name": "EVRStorm", "Chance": 0.35 },
+    { "Name": "HeavyFog", "Chance": 0.3 }
   ]
 }

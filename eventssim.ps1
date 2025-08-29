@@ -107,44 +107,83 @@ $analyticBuckets = $events | ForEach-Object {
     }
 }
 
+# Determine base selection probabilities (from buckets; fallback to fractional Chance or uniform)
 $sumBuckets = ($analyticBuckets | Measure-Object -Property Bucket -Sum).Sum
-if ($sumBuckets -eq 0) {
-    # Fallback: if all buckets zero, try fractional Chance proportions, otherwise uniform
+$baseProbs = @()
+if ($sumBuckets -gt 0) {
+    foreach ($b in $analyticBuckets) { $baseProbs += ([double]$b.Bucket / $sumBuckets) }
+} else {
     $sumChance = ($analyticBuckets | Measure-Object -Property Chance -Sum).Sum
     if ($sumChance -gt 0) {
-        $analyticRows = $analyticBuckets | ForEach-Object {
-            $p = $_.Chance / $sumChance
-            [PSCustomObject]@{
-                Event = $_.Name
-                Bucket = $_.Bucket
-                Prob = [math]::Round($p, 6)
-                PerWindow = [math]::Round($eventsPerWindow * $p, 3)
-                PerDay = [math]::Round($eventsPerDay * $p, 3)
-            }
-        }
+        foreach ($b in $analyticBuckets) { $baseProbs += ([double]$b.Chance / $sumChance) }
     } else {
-        $count = $analyticBuckets.Count
-        $p = if ($count -gt 0) { 1.0 / $count } else { 0 }
-        $analyticRows = $analyticBuckets | ForEach-Object {
-            [PSCustomObject]@{
-                Event = $_.Name
-                Bucket = $_.Bucket
-                Prob = [math]::Round($p, 6)
-                PerWindow = [math]::Round($eventsPerWindow * $p, 3)
-                PerDay = [math]::Round($eventsPerDay * $p, 3)
+        $n = $analyticBuckets.Count
+        $unif = if ($n -gt 0) { 1.0 / $n } else { 0 }
+        for ($i = 0; $i -lt $n; $i++) { $baseProbs += $unif }
+    }
+}
+
+# If only one event, stationary is trivially that event
+$n = $analyticBuckets.Count
+if ($n -le 1) {
+    $stationary = $baseProbs
+} else {
+    # Build transition matrix implicitly and compute stationary distribution by power iteration
+    # T[j][i] = 0 if i==j else baseProbs[i] / (1 - baseProbs[j])
+    $stationary = @()
+    # initialize stationary with baseProbs (reasonable starting point)
+    foreach ($p in $baseProbs) { $stationary += $p }
+
+    $maxIter = 10000
+    $tol = 1e-12
+    for ($iter = 0; $iter -lt $maxIter; $iter++) {
+        $next = New-Object 'System.Collections.Generic.List[double]'
+        for ($i = 0; $i -lt $n; $i++) { $next.Add(0.0) }
+
+        for ($j = 0; $j -lt $n; $j++) {
+            $pj = $baseProbs[$j]
+            $den = 1.0 - $pj
+            if ($den -le 0) {
+                # if baseProbs[j] == 1, all mass stays at j (degenerate); handle by leaving next unchanged
+                continue
+            }
+            for ($i = 0; $i -lt $n; $i++) {
+                if ($i -eq $j) { continue }
+                $trans = $baseProbs[$i] / $den
+                # next[i] += stationary[j] * trans
+                $next[$i] = $next[$i] + ($stationary[$j] * $trans)
             }
         }
-    }
-} else {
-    $analyticRows = $analyticBuckets | ForEach-Object {
-        $p = $_.Bucket / $sumBuckets
-        [PSCustomObject]@{
-            Event = $_.Name
-            Bucket = $_.Bucket
-            Prob = [math]::Round($p, 6)
-            PerWindow = [math]::Round($eventsPerWindow * $p, 3)
-            PerDay = [math]::Round($eventsPerDay * $p, 3)
+
+        # normalize next (to avoid tiny numeric drift)
+        $sumNext = 0.0
+        for ($i = 0; $i -lt $n; $i++) { $sumNext += $next[$i] }
+        if ($sumNext -eq 0) { break }
+        for ($i = 0; $i -lt $n; $i++) { $next[$i] = $next[$i] / $sumNext }
+
+        # compute max diff
+        $maxdiff = 0.0
+        for ($i = 0; $i -lt $n; $i++) {
+            $d = [math]::Abs($next[$i] - $stationary[$i])
+            if ($d -gt $maxdiff) { $maxdiff = $d }
         }
+
+        # update
+        $stationary = @($next.ToArray())
+        if ($maxdiff -lt $tol) { break }
+    }
+}
+
+# Build analytic rows using stationary distribution (accounts for "no immediate repeats")
+$analyticRows = @()
+for ($i = 0; $i -lt $n; $i++) {
+    $pStat = if ($i -lt $stationary.Count) { $stationary[$i] } else { 0 }
+    $analyticRows += [PSCustomObject]@{
+        Event = $analyticBuckets[$i].Name
+        Bucket = $analyticBuckets[$i].Bucket
+        Prob = [math]::Round($pStat, 6)
+        PerWindow = [math]::Round($eventsPerWindow * $pStat, 3)
+        PerDay = [math]::Round($eventsPerDay * $pStat, 3)
     }
 }
 
@@ -169,6 +208,9 @@ foreach ($evt in $events) {
 
 # Collect per-day records for CSV export (Day, Event, Count)
 $dailyRecords = @()
+
+# Track last event to avoid immediate repeats (matches DayZ behavior)
+$lastEventName = $null
 
 function Get-RandomEventName($events, [bool]$useDayZ = $true) {
     if (-not $events -or $events.Count -eq 0) { return $null }
@@ -209,9 +251,21 @@ for ($day = 1; $day -le $days; $day++) {
             $eventDelay = Get-Random -Minimum $eventMin -Maximum ($eventMax + 1)
             $currentTime += $eventDelay
             if ($currentTime -lt $windowSeconds) {
+                # pick an event and ensure it's not the same as the last one
                 $eventName = Get-RandomEventName $events $useDayZSelection
-                $eventCounts[$eventName]++
-                $dailyCounts[$eventName]++
+                if ($eventName -ne $null -and $events.Count -gt 1) {
+                    # re-draw if same as previous selection
+                    $tries = 0
+                    while ($eventName -eq $lastEventName -and $tries -lt 100) {
+                        $eventName = Get-RandomEventName $events $useDayZSelection
+                        $tries++
+                    }
+                }
+                if ($eventName -ne $null) {
+                    $eventCounts[$eventName]++
+                    $dailyCounts[$eventName]++
+                    $lastEventName = $eventName
+                }
             }
         }
     }
