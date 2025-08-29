@@ -2,7 +2,7 @@
 # Accept days and restartsPerDay as runtime parameters so the script can be run without editing.
 param(
     [Parameter(Position=0, HelpMessage = 'Number of simulated days')]
-    [int]$days = 120,
+    [int]$days = 7,
 
     [Parameter(Position=1, HelpMessage = 'Restart windows per day')]
     [int]$restartsPerDay = 4
@@ -71,14 +71,14 @@ try {
 # 2) An object with metadata and an Events array: { EventMin: <sec>, EventMax: <sec>, Events: [ { Name, Chance }, ... ] }
 if ($eventsJson -is [System.Array]) {
     $events = $eventsJson
-} elseif ($eventsJson.Events -ne $null) {
+} elseif ($null -ne $eventsJson.Events) {
     $events = $eventsJson.Events
     # override event timing if provided in the JSON (values are seconds)
-    if ($eventsJson.EventMin -ne $null) { $eventMin = [int]$eventsJson.EventMin }
-    if ($eventsJson.EventMax -ne $null) { $eventMax = [int]$eventsJson.EventMax }
+    if ($null -ne $eventsJson.EventMin) { $eventMin = [int]$eventsJson.EventMin }
+    if ($null -ne $eventsJson.EventMax) { $eventMax = [int]$eventsJson.EventMax }
 } else {
     # Single event object (not likely) - wrap in array if it looks like an event
-    if ($eventsJson.Name -ne $null -and $eventsJson.Chance -ne $null) {
+    if ($null -ne $eventsJson.Name -and $null -ne $eventsJson.Chance) {
         $events = @($eventsJson)
     } else {
         Write-Error "Unsupported events.json structure. Expected array or object with 'Events' array."

@@ -4,9 +4,9 @@
   "Events": [
     { "Name": "Aurora", "Chance": 0.4 },
     { "Name": "Blizzard", "Chance": 0.1 },
-    { "Name": "ExtremeCold", "Chance": 0.2 },
-    { "Name": "SnowfallE", "Chance": 0.2 },
-    { "Name": "EVRStorm", "Chance": 0.17 },
+    { "Name": "ExtremeCold", "Chance": 0.15 },
+    { "Name": "SnowfallE", "Chance": 0.25 },
+    { "Name": "EVRStorm", "Chance": 0.2 },
     { "Name": "HeavyFog", "Chance": 0.1 }
   ]
 }
