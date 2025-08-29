@@ -6,7 +6,7 @@ Idea is to be able to simulate a weather over a period of time to get an underst
 
 Key points (short)
 - Script: `./eventssim.ps1` (run from repo root).
-- Events are loaded from `events.json` (two supported formats — see below).
+- Events are loaded from `events.json`
 
 
 Quick examples
