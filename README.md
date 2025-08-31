@@ -70,3 +70,19 @@ Notes
 
 License
 - Use as you like. No warranty.
+
+Web UI (React + TypeScript)
+
+There is a minimal web UI in this repo to run analytic calculations in the browser.
+
+Setup:
+
+```powershell
+# install deps
+npm install
+
+# dev server
+npm run dev
+```
+
+Open the dev server URL printed by Vite (usually http://localhost:5173).
