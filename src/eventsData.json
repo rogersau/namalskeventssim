@@ -1,8 +1,8 @@
 [
-  { "Name": "Aurora",      "Chance": 0.85 },
-  { "Name": "Blizzard",    "Chance": 0.10 },
-  { "Name": "ExtremeCold", "Chance": 0.20 },
-  { "Name": "SnowfallE",   "Chance": 0.40 },
-  { "Name": "EVRStorm",    "Chance": 0.30 },
-  { "Name": "HeavyFog",    "Chance": 0.10 }
+    { "Name": "Aurora", "Chance": 0.85 },
+    { "Name": "Blizzard", "Chance": 0.4 },
+    { "Name": "ExtremeCold", "Chance": 0.40 },
+    { "Name": "SnowfallE", "Chance": 0.60 },
+    { "Name": "EVRStorm", "Chance": 0.35 },
+    { "Name": "HeavyFog", "Chance": 0.3 }
 ]
