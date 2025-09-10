@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   Table,
   TableBody,
@@ -54,7 +54,14 @@ function stationaryNoRepeat(baseProbs: number[]) {
 }
 
 export default function Simulator() {
-  const [events, setEvents] = useState<EventDef[]>([]);
+  const [events, setEvents] = useState<EventDef[]>([
+    { Name: "Aurora", Chance: 0.85 },
+    { Name: "Blizzard", Chance: 0.4 },
+    { Name: "ExtremeCold", Chance: 0.4 },
+    { Name: "SnowfallE", Chance: 0.6 },
+    { Name: "EVRStorm", Chance: 0.35 },
+    { Name: "HeavyFog", Chance: 0.3 },
+  ]);
   const [eventMin, setEventMin] = useState(550);
   const [eventMax, setEventMax] = useState(1100);
   const [restartsPerDay, setRestartsPerDay] = useState(4);
@@ -66,12 +73,7 @@ export default function Simulator() {
   const [maxSimDays, setMaxSimDays] = useState(0); // 0 = run until stopped
   const [msBetweenDays, setMsBetweenDays] = useState(10);
 
-  useEffect(() => {
-    fetch("/src/eventsData.json")
-      .then((r) => r.json())
-      .then((data: EventDef[]) => setEvents(data))
-      .catch(() => {});
-  }, []);
+  // Default events are defined inline above; no external fetch required.
 
   function addRow() {
     setEvents((e) => [...e, { Name: "NewEvent", Chance: 0.1 }]);
